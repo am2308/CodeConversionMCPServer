@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mcp-converter-ingress
+  namespace: mcp-converter
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"  # Adjust based on your cert-manager setup
+spec:
+  ingressClassName: nginx  # Adjust based on your ingress controller
+  tls:
+  - hosts:
+    - mcp-converter.yourdomain.com  # Replace with your domain
+    secretName: mcp-converter-tls
+  rules:
+  - host: mcp-converter.yourdomain.com  # Replace with your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: mcp-converter-service
+            port:
+              number: 80

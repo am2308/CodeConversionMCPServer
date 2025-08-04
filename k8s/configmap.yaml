@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-converter-config
+  namespace: mcp-converter
+data:
+  port: "8000"
+  debug: "false"
+  llm_model: "gpt-4"
+  max_file_size: "10000"
+  max_files_per_repo: "50"
+  github_api_url: "https://api.github.com"

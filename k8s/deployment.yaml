@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-converter
+  namespace: mcp-converter
+  labels:
+    app: mcp-converter
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mcp-converter
+  template:
+    metadata:
+      labels:
+        app: mcp-converter
+    spec:
+      containers:
+      - name: mcp-converter
+        image: mcp-converter:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-converter-config
+              key: port
+        - name: DEBUG
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-converter-config
+              key: debug
+        - name: LLM_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-converter-config
+              key: llm_model
+        - name: MAX_FILE_SIZE
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-converter-config
+              key: max_file_size
+        - name: MAX_FILES_PER_REPO
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-converter-config
+              key: max_files_per_repo
+        - name: GITHUB_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-converter-config
+              key: github_api_url
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: mcp-converter-secrets
+              key: github-token
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mcp-converter-secrets
+              key: openai-api-key
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
