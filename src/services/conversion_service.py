@@ -66,6 +66,7 @@ class ConversionService:
             # Process each convertible file
             conversions = []
             files_to_commit = []
+            files_to_remove = []
             
             for file_content, source_language in convertible_files:
                 try:
@@ -108,6 +109,7 @@ class ConversionService:
                     
                     conversions.append(conversion)
                     files_to_commit.append((target_path, formatted_code))
+                    files_to_remove.append(file_content.path)  # Mark original file for removal
                     
                     logger.info("File converted successfully", 
                               original=file_content.path, 
@@ -140,7 +142,8 @@ class ConversionService:
                 repo,
                 target_branch,
                 files_to_commit,
-                commit_message
+                commit_message,
+                files_to_remove
             )
             
             # Generate PR description

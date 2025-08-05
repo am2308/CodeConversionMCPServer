@@ -121,15 +121,16 @@ class GitHubService:
         repo: Repository,
         branch: str,
         files: List[Tuple[str, str]],  # (path, content) pairs
-        commit_message: str
+        commit_message: str,
+        files_to_remove: Optional[List[str]] = None  # paths to remove
     ) -> None:
-        """Commit multiple files to repository"""
+        """Commit multiple files to repository and optionally remove files"""
         try:
             # Get the current commit SHA
             ref = repo.get_git_ref(f"heads/{branch}")
             current_sha = ref.object.sha
             
-            # Create blobs for each file
+            # Create blobs for each file to add
             blobs = []
             for file_path, content in files:
                 blob = repo.create_git_blob(content, "utf-8")
@@ -138,8 +139,10 @@ class GitHubService:
             # Get current tree
             base_tree = repo.get_git_tree(current_sha)
             
-            # Create tree elements
+            # Create tree elements - include new files and mark files for removal
             tree_elements = []
+            
+            # Add new converted files
             for file_path, blob_sha in blobs:
                 tree_elements.append(InputGitTreeElement(
                     path=file_path,
@@ -148,7 +151,17 @@ class GitHubService:
                     sha=blob_sha
                 ))
             
-            # Create new tree
+            # Mark original files for removal
+            if files_to_remove:
+                for file_path in files_to_remove:
+                    tree_elements.append(InputGitTreeElement(
+                        path=file_path,
+                        mode="100644",
+                        type="blob",
+                        sha=None  # Setting sha to None removes the file
+                    ))
+            
+            # Create new tree that includes existing files plus new converted files minus removed files
             new_tree = repo.create_git_tree(tree_elements, base_tree)
             
             # Create commit
@@ -161,7 +174,10 @@ class GitHubService:
             # Update branch reference
             ref.edit(commit.sha)
             
-            logger.info("Files committed", branch=branch, file_count=len(files))
+            logger.info("Files committed", 
+                       branch=branch, 
+                       files_added=len(files), 
+                       files_removed=len(files_to_remove) if files_to_remove else 0)
             
         except GithubException as e:
             logger.error("Failed to commit files", error=str(e))

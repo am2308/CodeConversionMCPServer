@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Conversion Service</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: #f8fafc;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #374151;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-right: 1rem;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        .disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        .success {
+            background: #10b981;
+            color: white;
+            padding: 1rem;
+            border-radius: 6px;
+            margin: 1rem 0;
+        }
+        .error {
+            background: #ef4444;
+            color: white;
+            padding: 1rem;
+            border-radius: 6px;
+            margin: 1rem 0;
+        }
+        .jobs {
+            margin-top: 2rem;
+        }
+        .job {
+            border: 1px solid #e5e7eb;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 6px;
+        }
+        .status {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        .status.pending { background: #fbbf24; color: #92400e; }
+        .status.processing { background: #3b82f6; color: white; }
+        .status.completed { background: #10b981; color: white; }
+        .status.failed { background: #ef4444; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Code Conversion Service</h1>
+        <p>Convert your repository code to Python using AI</p>
+
+        <!-- Registration Form -->
+        <div id="registration" style="display: block;">
+            <h2>Register Account</h2>
+            <form id="registerForm">
+                <div class="form-group">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="githubUsername">GitHub Username</label>
+                    <input type="text" id="githubUsername" required>
+                </div>
+                <div class="form-group">
+                    <label for="githubToken">GitHub Personal Access Token</label>
+                    <input type="password" id="githubToken" required>
+                    <small>Create one at: <a href="https://github.com/settings/tokens" target="_blank">GitHub Settings</a></small>
+                </div>
+                <button type="submit">Register</button>
+            </form>
+        </div>
+
+        <!-- Conversion Form -->
+        <div id="conversion" style="display: none;">
+            <h2>Convert Repository</h2>
+            <form id="convertForm">
+                <div class="form-group">
+                    <label for="repoOwner">Repository Owner</label>
+                    <input type="text" id="repoOwner" required>
+                </div>
+                <div class="form-group">
+                    <label for="repoName">Repository Name</label>
+                    <input type="text" id="repoName" required>
+                </div>
+                <div class="form-group">
+                    <label for="sourceBranch">Source Branch</label>
+                    <input type="text" id="sourceBranch" value="main">
+                </div>
+                <div class="form-group">
+                    <label for="targetBranch">Target Branch</label>
+                    <input type="text" id="targetBranch" placeholder="convert-to-python">
+                </div>
+                <div class="form-group">
+                    <label for="sourceLanguages">Source Languages (optional)</label>
+                    <select id="sourceLanguages" multiple>
+                        <option value="shell">Shell/Bash</option>
+                        <option value="powershell">PowerShell</option>
+                        <option value="typescript">TypeScript</option>
+                        <option value="javascript">JavaScript</option>
+                        <option value="go">Go</option>
+                        <option value="rust">Rust</option>
+                        <option value="java">Java</option>
+                    </select>
+                    <small>Hold Ctrl/Cmd to select multiple</small>
+                </div>
+                <button type="submit">Start Conversion</button>
+                <button type="button" onclick="loadJobs()">Refresh Jobs</button>
+            </form>
+        </div>
+
+        <!-- Messages -->
+        <div id="messages"></div>
+
+        <!-- Jobs List -->
+        <div id="jobs" class="jobs"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        let apiKey = localStorage.getItem('apiKey');
+
+        if (apiKey) {
+            document.getElementById('registration').style.display = 'none';
+            document.getElementById('conversion').style.display = 'block';
+            loadJobs();
+        }
+
+        // Registration
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const data = {
+                email: document.getElementById('email').value,
+                github_username: document.getElementById('githubUsername').value,
+                github_token: document.getElementById('githubToken').value
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    apiKey = result.api_key;
+                    localStorage.setItem('apiKey', apiKey);
+                    showMessage('Registration successful!', 'success');
+                    document.getElementById('registration').style.display = 'none';
+                    document.getElementById('conversion').style.display = 'block';
+                    loadJobs();
+                } else {
+                    showMessage(result.detail || 'Registration failed', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error: ' + error.message, 'error');
+            }
+        });
+
+        // Conversion
+        document.getElementById('convertForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const sourceLanguages = Array.from(document.getElementById('sourceLanguages').selectedOptions)
+                .map(option => option.value);
+
+            const data = {
+                repo_owner: document.getElementById('repoOwner').value,
+                repo_name: document.getElementById('repoName').value,
+                branch: document.getElementById('sourceBranch').value,
+                target_branch: document.getElementById('targetBranch').value,
+                source_languages: sourceLanguages.length > 0 ? sourceLanguages : null,
+                target_language: 'python'
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/convert`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showMessage(`Conversion started! Job ID: ${result.task_id}`, 'success');
+                    setTimeout(loadJobs, 1000);
+                } else {
+                    showMessage(result.detail || 'Conversion failed', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error: ' + error.message, 'error');
+            }
+        });
+
+        // Load jobs
+        async function loadJobs() {
+            if (!apiKey) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/jobs`, {
+                    headers: { 'Authorization': `Bearer ${apiKey}` }
+                });
+
+                const jobs = await response.json();
+                
+                if (response.ok) {
+                    displayJobs(jobs);
+                } else {
+                    showMessage('Failed to load jobs', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error: ' + error.message, 'error');
+            }
+        }
+
+        // Display jobs
+        function displayJobs(jobs) {
+            const container = document.getElementById('jobs');
+            
+            if (jobs.length === 0) {
+                container.innerHTML = '<p>No conversion jobs yet.</p>';
+                return;
+            }
+
+            container.innerHTML = '<h3>Your Conversion Jobs</h3>' + 
+                jobs.map(job => `
+                    <div class="job">
+                        <strong>${job.repo_owner}/${job.repo_name}</strong>
+                        <span class="status ${job.status}">${job.status}</span>
+                        <br>
+                        <small>
+                            ${job.source_branch} → ${job.target_branch} | 
+                            ${job.files_converted}/${job.files_processed} files converted
+                        </small>
+                        ${job.pr_url ? `<br><a href="${job.pr_url}" target="_blank">View Pull Request</a>` : ''}
+                        ${job.error_message ? `<br><span style="color: red;">Error: ${job.error_message}</span>` : ''}
+                    </div>
+                `).join('');
+        }
+
+        // Show message
+        function showMessage(message, type) {
+            const container = document.getElementById('messages');
+            container.innerHTML = `<div class="${type}">${message}</div>`;
+            setTimeout(() => container.innerHTML = '', 5000);
+        }
+
+        // Auto-refresh jobs every 10 seconds
+        setInterval(loadJobs, 10000);
+    </script>
+</body>
+</html>
