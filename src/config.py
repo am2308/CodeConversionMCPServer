@@ -25,6 +25,44 @@ class Settings(BaseSettings):
     max_file_size: int = Field(default=10000, description="Maximum file size to process (bytes)")
     max_files_per_repo: int = Field(default=50, description="Maximum files to process per repository")
     
+    # Supported file extensions and their language mappings
+    supported_extensions: dict = Field(
+        default={
+            ".sh": "shell",
+            ".bash": "shell", 
+            ".zsh": "shell",
+            ".fish": "shell",
+            ".ps1": "powershell",
+            ".psm1": "powershell",
+            ".psd1": "powershell",
+            ".ts": "typescript",
+            ".tsx": "typescript",
+            ".js": "javascript",
+            ".jsx": "javascript",
+            ".go": "go",
+            ".rs": "rust",
+            ".rb": "ruby",
+            ".php": "php",
+            ".java": "java",
+            ".scala": "scala",
+            ".kt": "kotlin",
+            ".swift": "swift",
+            ".cs": "csharp",
+            ".cpp": "cpp",
+            ".cc": "cpp",
+            ".cxx": "cpp",
+            ".c": "c",
+            ".pl": "perl",
+            ".r": "r",
+            ".R": "r",
+            ".lua": "lua",
+            ".dart": "dart",
+            ".groovy": "groovy",
+            ".gradle": "groovy"
+        },
+        description="Supported file extensions and their language mappings"
+    )
+    
     # Kubernetes settings
     namespace: str = Field(default="default", description="Kubernetes namespace")
     

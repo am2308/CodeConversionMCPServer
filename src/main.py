@@ -1,5 +1,5 @@
 """
-MCP Server for converting shell scripts to Python code
+MCP Server for converting multiple programming languages to Python code
 """
 import asyncio
 import logging
@@ -22,7 +22,7 @@ logger = structlog.get_logger()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
-    logger.info("Starting MCP GitHub Converter Server")
+    logger.info("Starting MCP Multi-Language GitHub Converter Server")
     
     # Initialize services
     github_service = GitHubService(settings.github_token)
@@ -36,11 +36,11 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    logger.info("Shutting down MCP GitHub Converter Server")
+    logger.info("Shutting down MCP Multi-Language GitHub Converter Server")
 
 app = FastAPI(
-    title="MCP GitHub Shell to Python Converter",
-    description="Converts shell scripts to Python code and creates pull requests",
+    title="MCP Multi-Language to Python Converter",
+    description="Converts multiple programming languages to Python code and creates pull requests",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -58,9 +58,25 @@ app.add_middleware(
 async def root():
     """Root endpoint"""
     return {
-        "message": "MCP GitHub Shell to Python Converter",
+        "message": "MCP Multi-Language to Python Converter",
         "version": "1.0.0",
-        "docs": "/docs"
+        "docs": "/docs",
+        "supported_languages": list(set(settings.supported_extensions.values()))
+    }
+
+@app.get("/supported-languages", response_model=dict)
+async def get_supported_languages():
+    """Get list of supported programming languages"""
+    languages = {}
+    for ext, lang in settings.supported_extensions.items():
+        if lang not in languages:
+            languages[lang] = []
+        languages[lang].append(ext)
+    
+    return {
+        "supported_languages": languages,
+        "total_languages": len(languages),
+        "total_extensions": len(settings.supported_extensions)
     }
 
 @app.get("/health", response_model=HealthResponse)
@@ -91,12 +107,14 @@ async def convert_repository(
     request: ConversionRequest,
     background_tasks: BackgroundTasks
 ):
-    """Convert shell scripts in a repository to Python and create PR"""
+    """Convert code files in a repository to Python and create PR"""
     try:
         logger.info(
             "Starting conversion request",
             repo_owner=request.repo_owner,
-            repo_name=request.repo_name
+            repo_name=request.repo_name,
+            source_languages=request.source_languages,
+            target_language=request.target_language
         )
         
         # Start conversion process in background
@@ -108,6 +126,8 @@ async def convert_repository(
             request.repo_name,
             request.branch or "main",
             request.target_branch,
+            request.source_languages,
+            request.target_language or "python",
             task_id
         )
         

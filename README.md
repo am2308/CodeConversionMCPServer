@@ -1,15 +1,28 @@
-# MCP GitHub Shell to Python Converter
+# MCP Multi-Language to Python Converter
 
-A comprehensive MCP (Model Context Protocol) server that automatically discovers shell scripts in GitHub repositories, converts them to Python code using LLM models, and creates pull requests with the converted code.
+A comprehensive MCP (Model Context Protocol) server that automatically discovers code files in multiple programming languages within GitHub repositories, converts them to Python code using LLM models, and creates pull requests with the converted code.
 
 ## Features
 
 - **Secure GitHub Integration**: Uses GitHub Personal Access Tokens for secure repository access
-- **Intelligent Shell Script Discovery**: Automatically finds `.sh` and `.bash` files in repositories
-- **LLM-Powered Conversion**: Uses OpenAI GPT models for high-quality shell-to-Python conversion
+- **Multi-Language Code Discovery**: Automatically finds code files in 20+ programming languages
+- **LLM-Powered Conversion**: Uses OpenAI GPT models for high-quality code conversion to Python
 - **Automated Pull Requests**: Creates detailed pull requests with converted code
 - **Kubernetes Ready**: Complete Kubernetes deployment configuration with security best practices
 - **Production Ready**: Includes health checks, logging, monitoring, and error handling
+
+## Supported Languages
+
+The converter supports the following programming languages:
+
+- **Shell Scripts**: `.sh`, `.bash`, `.zsh`, `.fish`
+- **PowerShell**: `.ps1`, `.psm1`, `.psd1`
+- **Web Languages**: `.js`, `.jsx`, `.ts`, `.tsx`
+- **System Languages**: `.go`, `.rs`, `.c`, `.cpp`, `.cc`, `.cxx`
+- **JVM Languages**: `.java`, `.scala`, `.kt`, `.groovy`
+- **Other Languages**: `.rb`, `.php`, `.cs`, `.swift`, `.pl`, `.r`, `.R`, `.lua`, `.dart`
+
+All these languages can be converted to Python while maintaining their original functionality and adapting language-specific patterns to Pythonic equivalents.
 
 ## Quick Start
 
@@ -25,7 +38,7 @@ A comprehensive MCP (Model Context Protocol) server that automatically discovers
 1. **Clone and setup**:
 ```bash
 git clone <repository-url>
-cd mcp-github-converter
+cd mcp-multi-language-converter
 ```
 
 2. **Install dependencies**:
@@ -69,12 +82,14 @@ chmod +x scripts/deploy.sh
 ### API Endpoints
 
 - `GET /`: Service information
+- `GET /supported-languages`: List of supported programming languages
 - `GET /health`: Health check
 - `POST /convert`: Start conversion process
 - `GET /status/{task_id}`: Check conversion status
 
 ### Convert Repository
 
+**Convert all supported languages:**
 ```bash
 curl -X POST "http://your-service/convert" \
   -H "Content-Type: application/json" \
@@ -82,6 +97,19 @@ curl -X POST "http://your-service/convert" \
     "repo_owner": "username",
     "repo_name": "repository-name",
     "branch": "main"
+  }'
+```
+
+**Convert specific languages:**
+```bash
+curl -X POST "http://your-service/convert" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo_owner": "username",
+    "repo_name": "repository-name",
+    "branch": "main",
+    "source_languages": ["shell", "javascript", "go"],
+    "target_language": "python"
   }'
 ```
 
@@ -105,6 +133,34 @@ Your GitHub Personal Access Token needs the following permissions:
 - `repo` (Full control of private repositories)
 - `workflow` (Update GitHub Action workflows)
 
+## Language-Specific Conversion Features
+
+### Shell Scripts
+- Converts shell commands to `subprocess.run()` calls
+- Maintains file operations using `pathlib`
+- Preserves environment variable handling
+- Converts pipes and redirections appropriately
+
+### PowerShell
+- Adapts PowerShell cmdlets to Python equivalents
+- Converts object pipelines to Python data processing
+- Maintains Windows-specific functionality where possible
+
+### Web Languages (JS/TS)
+- Converts async/await patterns to Python asyncio
+- Adapts DOM manipulation to appropriate Python libraries
+- Maintains API call patterns using `requests` or `httpx`
+
+### System Languages (Go/Rust/C++)
+- Converts concurrent patterns to Python threading/asyncio
+- Adapts memory management concepts
+- Maintains performance-critical sections with appropriate libraries
+
+### Data Languages (R)
+- Converts to pandas/numpy for data manipulation
+- Maintains statistical analysis patterns
+- Adapts visualization to matplotlib/seaborn
+
 ## Architecture
 
 ```
@@ -115,7 +171,7 @@ Your GitHub Personal Access Token needs the following permissions:
          │                       │                       │
          ▼                       ▼                       ▼
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Conversion    │    │   Repository     │    │   Shell Script  │
+│   Conversion    │    │   Repository     │    │   Multi-Language│
 │   Service       │◄──►│   Operations     │    │   Conversion    │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
 ```
@@ -170,6 +226,22 @@ scripts/                   # Deployment scripts
 └── setup-secrets.sh
 ```
 
+### Adding New Languages
+
+To add support for a new programming language:
+
+1. **Update `src/config.py`**:
+   - Add file extensions to `supported_extensions`
+   - Map extensions to language names
+
+2. **Update `src/services/llm_service.py`**:
+   - Add language-specific conversion instructions
+   - Include appropriate Python library mappings
+
+3. **Test the conversion**:
+   - Create test files in the new language
+   - Verify conversion quality and functionality
+
 ### Adding New Features
 
 1. **Create feature branch**
@@ -193,12 +265,18 @@ scripts/                   # Deployment scripts
    - Check pod logs: `kubectl logs -f deployment/mcp-converter -n mcp-converter`
    - Verify secrets: `kubectl get secrets -n mcp-converter`
 
+4. **Language-Specific Conversion Issues**:
+   - Check if the source language is in the supported list
+   - Verify file extensions are correctly mapped
+   - Review conversion logs for specific error messages
+
 ### Support
 
 For issues and questions:
 1. Check the logs for detailed error messages
 2. Verify your GitHub token permissions
 3. Ensure OpenAI API key is valid and has sufficient credits
+4. Check the `/supported-languages` endpoint for current language support
 
 ## License
 
@@ -212,4 +290,4 @@ MIT License - see LICENSE file for details.
 4. Add tests
 5. Submit a pull request
 
-We welcome contributions that improve security, performance, or add new features!
+We welcome contributions that improve security, performance, add new programming languages, or enhance conversion quality!

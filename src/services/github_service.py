@@ -7,6 +7,7 @@ import structlog
 from github import Github, GithubException
 from github.Repository import Repository
 from github.ContentFile import ContentFile
+from ..config import settings
 
 logger = structlog.get_logger()
 
@@ -37,9 +38,25 @@ class GitHubService:
             logger.error("Failed to get repository", owner=owner, name=name, error=str(e))
             raise
     
-    async def find_shell_files(self, repo: Repository, branch: str = "main") -> List[ContentFile]:
-        """Find all shell script files in repository"""
-        shell_files = []
+    async def find_convertible_files(
+        self, 
+        repo: Repository, 
+        branch: str = "main",
+        source_languages: Optional[List[str]] = None
+    ) -> List[Tuple[ContentFile, str]]:
+        """Find all convertible files in repository"""
+        convertible_files = []
+        
+        # Determine which extensions to look for
+        target_extensions = []
+        if source_languages:
+            # Filter extensions based on requested source languages
+            for ext, lang in settings.supported_extensions.items():
+                if lang in source_languages:
+                    target_extensions.append(ext)
+        else:
+            # Use all supported extensions
+            target_extensions = list(settings.supported_extensions.keys())
         
         try:
             # Get repository contents recursively
@@ -51,16 +68,22 @@ class GitHubService:
                 if file_content.type == "dir":
                     # Add directory contents to process
                     contents.extend(repo.get_contents(file_content.path, ref=branch))
-                elif file_content.name.endswith(('.sh', '.bash')):
-                    # Found a shell script
-                    shell_files.append(file_content)
-                    logger.info("Found shell file", path=file_content.path)
+                else:
+                    # Check if file has a supported extension
+                    for ext in target_extensions:
+                        if file_content.name.endswith(ext):
+                            language = settings.supported_extensions[ext]
+                            convertible_files.append((file_content, language))
+                            logger.info("Found convertible file", 
+                                      path=file_content.path, 
+                                      language=language)
+                            break
             
-            logger.info("Shell file discovery complete", count=len(shell_files))
-            return shell_files
+            logger.info("File discovery complete", count=len(convertible_files))
+            return convertible_files
             
         except GithubException as e:
-            logger.error("Failed to find shell files", error=str(e))
+            logger.error("Failed to find convertible files", error=str(e))
             raise
     
     async def get_file_content(self, file: ContentFile) -> str:
