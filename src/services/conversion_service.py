@@ -245,3 +245,4 @@ if __name__ == "__main__":
 '''
             return header + main_function
         else:
+            return header + converted_code

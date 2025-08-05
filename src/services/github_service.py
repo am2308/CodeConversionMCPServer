@@ -4,7 +4,7 @@ GitHub service for repository operations
 import asyncio
 from typing import List, Tuple, Optional
 import structlog
-from github import Github, GithubException
+from github import Github, GithubException, InputGitTreeElement
 from github.Repository import Repository
 from github.ContentFile import ContentFile
 from ..config import settings
@@ -141,12 +141,12 @@ class GitHubService:
             # Create tree elements
             tree_elements = []
             for file_path, blob_sha in blobs:
-                tree_elements.append({
-                    "path": file_path,
-                    "mode": "100644",
-                    "type": "blob",
-                    "sha": blob_sha
-                })
+                tree_elements.append(InputGitTreeElement(
+                    path=file_path,
+                    mode="100644",
+                    type="blob",
+                    sha=blob_sha
+                ))
             
             # Create new tree
             new_tree = repo.create_git_tree(tree_elements, base_tree)
