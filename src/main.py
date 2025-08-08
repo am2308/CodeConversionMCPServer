@@ -4,17 +4,18 @@ Multi-tenant Code Conversion MCP Server
 import asyncio
 from contextlib import asynccontextmanager
 import structlog
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import Optional, List
 import json
 import uuid
 from datetime import datetime
 
 from .config import settings
-from .models.database import create_tables, get_db, User, ConversionJob
+from .models.database import create_tables, get_db, SessionLocal, User, ConversionJob
 from .models.schemas import (
     HealthResponse, 
     ConversionRequest, 
@@ -51,7 +52,25 @@ app = FastAPI(
     title="Code Conversion MCP Server",
     description="Multi-tenant service for converting code between programming languages",
     version="2.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    openapi_tags=[
+        {
+            "name": "authentication",
+            "description": "User registration and authentication operations",
+        },
+        {
+            "name": "conversion",
+            "description": "Code conversion operations",
+        },
+        {
+            "name": "jobs",
+            "description": "Job management and status tracking",
+        },
+        {
+            "name": "health",
+            "description": "System health and status",
+        },
+    ],
 )
 
 # Add CORS middleware
@@ -113,19 +132,29 @@ async def get_supported_languages():
         "total_extensions": len(settings.supported_extensions)
     }
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health", response_model=HealthResponse, tags=["health"])
 async def health_check():
     """Health check endpoint"""
     try:
+        # Test database connection
+        db_healthy = True
+        try:
+            with SessionLocal() as db:
+                db.execute(text("SELECT 1"))
+        except Exception:
+            db_healthy = False
+        
         # Test LLM service
         llm_service = LLMService(settings.openai_api_key, settings.llm_model)
         llm_healthy = await llm_service.health_check()
         
+        overall_healthy = db_healthy and llm_healthy
+        
         return HealthResponse(
-            status="healthy" if llm_healthy else "degraded",
+            status="healthy" if overall_healthy else "degraded",
             services={
                 "llm": "healthy" if llm_healthy else "unhealthy",
-                "database": "healthy"
+                "database": "healthy" if db_healthy else "unhealthy"
             }
         )
     except Exception as e:
@@ -138,7 +167,7 @@ async def health_check():
             }
         )
 
-@app.post("/auth/register", response_model=UserRegistrationResponse)
+@app.post("/auth/register", response_model=UserRegistrationResponse, tags=["authentication"])
 async def register_user(
     request: UserRegistrationRequest,
     db: Session = Depends(get_db)
@@ -164,7 +193,7 @@ async def register_user(
         logger.error("User registration failed", error=str(e))
         raise HTTPException(status_code=500, detail="Registration failed")
 
-@app.post("/convert", response_model=ConversionResponse)
+@app.post("/convert", response_model=ConversionResponse, tags=["conversion"])
 async def convert_repository(
     request: ConversionRequest,
     background_tasks: BackgroundTasks,
@@ -173,15 +202,21 @@ async def convert_repository(
 ):
     """Start code conversion job"""
     try:
+        # Generate unique target branch name if not provided
+        target_branch = request.target_branch
+        if not target_branch:
+            timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+            target_branch = f"convert-to-{request.target_language}-{timestamp}"
+        
         # Create job record
         job = ConversionJob(
             user_id=current_user.id,
             repo_owner=request.repo_owner,
             repo_name=request.repo_name,
-            source_branch=request.branch or "main",
-            target_branch=request.target_branch or f"convert-to-{request.target_language or 'python'}",
+            source_branch=request.branch,
+            target_branch=target_branch,
             source_languages=json.dumps(request.source_languages) if request.source_languages else None,
-            target_language=request.target_language or "python",
+            target_language=request.target_language,
             status="pending"
         )
         
@@ -211,7 +246,7 @@ async def convert_repository(
         logger.error("Failed to start conversion", error=str(e))
         raise HTTPException(status_code=500, detail="Failed to start conversion")
 
-@app.get("/jobs/{job_id}", response_model=JobStatusResponse)
+@app.get("/jobs/{job_id}", response_model=JobStatusResponse, tags=["jobs"])
 async def get_job_status(
     job_id: str,
     current_user: User = Depends(get_current_user),
@@ -249,7 +284,7 @@ async def get_job_status(
         logger.error("Failed to get job status", job_id=job_id, error=str(e))
         raise HTTPException(status_code=500, detail="Failed to get job status")
 
-@app.get("/jobs", response_model=List[JobStatusResponse])
+@app.get("/jobs", response_model=List[JobStatusResponse], tags=["jobs"])
 async def list_user_jobs(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -347,6 +382,44 @@ async def process_conversion_job(job_id: str, user_id: str):
     
     finally:
         db.close()
+
+# Configure OpenAPI security scheme
+app.openapi_schema = None  # Reset to regenerate
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    from fastapi.openapi.utils import get_openapi
+    
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    
+    # Add security scheme
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "API Key",
+            "description": "Enter your API key obtained from user registration"
+        }
+    }
+    
+    # Add security to protected endpoints
+    for path, path_item in openapi_schema["paths"].items():
+        if path in ["/convert", "/jobs", "/jobs/{job_id}"]:
+            for method in path_item:
+                if method in ["get", "post", "put", "delete"]:
+                    path_item[method]["security"] = [{"BearerAuth": []}]
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 if __name__ == "__main__":
     import uvicorn

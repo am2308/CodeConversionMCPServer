@@ -7,14 +7,23 @@ from datetime import datetime
 
 class ConversionRequest(BaseModel):
     """Request model for code conversion"""
-    repo_owner: str = Field(..., description="GitHub repository owner")
+    repo_owner: str = Field(..., description="GitHub repository owner/username")
     repo_name: str = Field(..., description="GitHub repository name")
-    branch: Optional[str] = Field(default="main", description="Source branch")
-    target_branch: Optional[str] = Field(default=None, description="Target branch for PR")
-    include_patterns: Optional[List[str]] = Field(default=None, description="File patterns to include (if None, uses all supported extensions)")
-    exclude_patterns: Optional[List[str]] = Field(default=[], description="File patterns to exclude")
-    target_language: Optional[str] = Field(default="python", description="Target language for conversion")
-    source_languages: Optional[List[str]] = Field(default=None, description="Source languages to convert (if None, converts all supported)")
+    branch: str = Field(default="main", description="Source branch to convert from")
+    target_branch: Optional[str] = Field(default=None, description="Target branch for PR (auto-generated if not provided)")
+    include_patterns: Optional[List[str]] = Field(default=None, description="File patterns to include (e.g., ['*.sh', '*.ts']). If None, includes all supported file types")
+    exclude_patterns: Optional[List[str]] = Field(default=None, description="File patterns to exclude (e.g., ['*.test.*', 'node_modules/**'])")
+    target_language: str = Field(default="python", description="Target language for conversion")
+    source_languages: Optional[List[str]] = Field(default=None, description="Source languages to convert (e.g., ['shell', 'typescript']). If None, auto-detects and converts all supported languages")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "repo_owner": "am2308",
+                "repo_name": "my-scripts",
+                "branch": "main"
+            }
+        }
 
 class ConversionResponse(BaseModel):
     """Response model for conversion request"""

@@ -8,13 +8,18 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     postgresql-client \
+    build-essential \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip and install wheel
+RUN pip install --upgrade pip setuptools wheel
 
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies with more verbose output
+RUN pip install --no-cache-dir --verbose -r requirements.txt
 
 # Copy application code
 COPY src/ ./src/

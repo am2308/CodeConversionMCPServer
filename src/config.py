@@ -12,6 +12,14 @@ class Settings(BaseSettings):
     port: int = Field(default=8000, description="Server port")
     debug: bool = Field(default=False, description="Debug mode")
     allowed_origins: List[str] = Field(default=["*"], description="CORS allowed origins")
+    log_level: str = Field(default="INFO", description="Logging level")
+    
+    # Database settings
+    database_url: str = Field(..., description="Database connection URL")
+    postgres_password: str = Field(..., description="PostgreSQL password")
+    
+    # Security settings
+    encryption_key: str = Field(..., description="Fernet encryption key for storing sensitive data")
     
     # GitHub settings
     github_token: str = Field(..., description="GitHub personal access token")
