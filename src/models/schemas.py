@@ -51,21 +51,26 @@ class UserRegistrationRequest(BaseModel):
     """User registration request"""
     email: str
     github_username: str
-    github_token: str  # GitHub Personal Access Token
+    # GitHub token will be handled via OAuth/App installation
     
     class Config:
         json_schema_extra = {
             "example": {
                 "email": "user@example.com",
-                "github_username": "john_doe",
-                "github_token": "ghp_xxxxxxxxxxxx"
+                "github_username": "john_doe"
             }
         }
+
+class GitHubAuthRequest(BaseModel):
+    """GitHub OAuth callback request"""
+    code: str
+    state: str
 
 class UserRegistrationResponse(BaseModel):
     """User registration response"""
     user_id: str
     api_key: str
+    github_auth_url: str  # URL to complete GitHub App installation
     message: str
     
     class Config:
@@ -73,7 +78,8 @@ class UserRegistrationResponse(BaseModel):
             "example": {
                 "user_id": "123e4567-e89b-12d3-a456-426614174000",
                 "api_key": "ccmcp_xxxxxxxxxxxxx",
-                "message": "User registered successfully"
+                "github_auth_url": "https://github.com/apps/your-app-name/installations/new",
+                "message": "User registered successfully. Please complete GitHub App installation using the provided URL."
             }
         }
 

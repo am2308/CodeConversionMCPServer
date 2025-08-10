@@ -7,9 +7,11 @@ from cryptography.fernet import Fernet
 from typing import Optional
 import structlog
 from sqlalchemy.orm import Session
+from datetime import datetime
 from ..models.database import User, get_db
 from ..config import settings
 import os
+from datetime import datetime
 
 logger = structlog.get_logger()
 
@@ -37,27 +39,22 @@ class AuthService:
         self, 
         db: Session,
         email: str, 
-        github_username: str,
-        github_token: str
+        github_username: str
     ) -> User:
-        """Create a new user with encrypted GitHub token"""
+        """Create a new user (GitHub authentication handled separately via OAuth)"""
         try:
             # Check if user already exists
             existing_user = db.query(User).filter(User.email == email).first()
             if existing_user:
                 raise ValueError("User with this email already exists")
             
-            # Encrypt GitHub token
-            encrypted_token = self.encrypt_github_token(github_token)
-            
             # Generate API key
             api_key = self.generate_api_key()
             
-            # Create user
+            # Create user (GitHub installation will be linked later)
             user = User(
                 email=email,
                 github_username=github_username,
-                github_token_encrypted=encrypted_token,
                 api_key=api_key
             )
             
@@ -119,4 +116,62 @@ class AuthService:
         except Exception as e:
             db.rollback()
             logger.error("Failed to update GitHub token", user_id=str(user.id), error=str(e))
+            raise
+
+    async def link_github_installation(
+        self, 
+        db: Session, 
+        user: User, 
+        installation_id: str, 
+        oauth_token: str = None
+    ) -> User:
+        """Link GitHub App installation to user"""
+        try:
+            if installation_id:
+                user.github_installation_id = installation_id
+            if oauth_token:
+                encrypted_token = self.encrypt_github_token(oauth_token)
+                user.github_token_encrypted = encrypted_token
+            
+            user.updated_at = datetime.utcnow()
+            db.commit()
+            db.refresh(user)
+            
+            logger.info("GitHub installation linked", user_id=str(user.id), installation_id=installation_id)
+            return user
+            
+        except Exception as e:
+            db.rollback()
+            logger.error("Failed to link GitHub installation", user_id=str(user.id), error=str(e))
+            raise
+        
+    async def link_github_installation(
+        self, 
+        db: Session, 
+        user: User, 
+        installation_id: str, 
+        oauth_token: str = None
+    ) -> User:
+        """Link GitHub App installation to user"""
+        try:
+            user.github_installation_id = installation_id
+            if oauth_token:
+                # Encrypt and store OAuth token if provided
+                encrypted_token = self.encrypt_github_token(oauth_token)
+                user.github_token_encrypted = encrypted_token
+            
+            user.updated_at = datetime.utcnow()
+            db.commit()
+            db.refresh(user)
+            
+            logger.info("GitHub installation linked", 
+                       user_id=str(user.id), 
+                       installation_id=installation_id)
+            return user
+            
+        except Exception as e:
+            db.rollback()
+            logger.error("Failed to link GitHub installation", 
+                        user_id=str(user.id), 
+                        error=str(e))
             raise

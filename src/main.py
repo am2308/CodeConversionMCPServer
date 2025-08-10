@@ -22,11 +22,13 @@ from .models.schemas import (
     ConversionResponse,
     UserRegistrationRequest,
     UserRegistrationResponse,
+    GitHubAuthRequest,
     JobStatusResponse
 )
 from .services.auth_service import AuthService
 from .services.conversion_service import ConversionService
 from .services.github_service import GitHubService
+from .services.github_app_service import GitHubAppService
 from .services.llm_service import LLMService
 from .utils.logging import setup_logging
 
@@ -36,6 +38,7 @@ logger = structlog.get_logger()
 
 # Initialize services
 auth_service = AuthService()
+github_app_service = GitHubAppService()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -177,14 +180,19 @@ async def register_user(
         user = await auth_service.create_user(
             db=db,
             email=request.email,
-            github_username=request.github_username,
-            github_token=request.github_token
+            github_username=request.github_username
         )
+        
+        # Generate GitHub App installation URL
+        # Use app slug (name) instead of numeric ID for the installation URL
+        app_slug = settings.github_app_slug or "codeconversion"  # fallback to your app name
+        github_auth_url = f"https://github.com/apps/{app_slug}/installations/new"
         
         return UserRegistrationResponse(
             user_id=str(user.id),
             api_key=user.api_key,
-            message="User registered successfully"
+            github_auth_url=github_auth_url,
+            message="User registered successfully. Please install the GitHub App using the provided URL to enable repository access."
         )
         
     except ValueError as e:
@@ -320,6 +328,82 @@ async def list_user_jobs(
         logger.error("Failed to list jobs", user_id=str(current_user.id), error=str(e))
         raise HTTPException(status_code=500, detail="Failed to list jobs")
 
+@app.post("/auth/github/callback", tags=["authentication"])
+async def github_oauth_callback(
+    request: GitHubAuthRequest,
+    db: Session = Depends(get_db)
+):
+    """Handle GitHub OAuth callback and link installation"""
+    try:
+        # Exchange code for access token
+        token_data = await github_app_service.exchange_code_for_token(request.code)
+        access_token = token_data.get('access_token')
+        
+        if not access_token:
+            raise HTTPException(status_code=400, detail="Failed to get access token")
+        
+        # Get user info
+        user_info = await github_app_service.get_user_info(access_token)
+        github_username = user_info.get('login')
+        
+        # Find user by GitHub username
+        user = db.query(User).filter(User.github_username == github_username).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found. Please register first.")
+        
+        # Link OAuth token to user (installation will be linked via webhook)
+        await auth_service.link_github_installation(
+            db=db,
+            user=user,
+            installation_id="",  # Will be updated via webhook
+            oauth_token=access_token
+        )
+        
+        return {
+            "message": "GitHub authentication successful",
+            "username": github_username,
+            "next_step": "Install the GitHub App on your repositories to enable code conversion"
+        }
+        
+    except Exception as e:
+        logger.error("GitHub OAuth callback failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Authentication failed")
+
+@app.post("/webhooks/github", tags=["webhooks"])
+async def github_webhook(
+    request: dict,
+    db: Session = Depends(get_db)
+):
+    """Handle GitHub App webhook events"""
+    try:
+        event_type = request.get('action')
+        installation = request.get('installation', {})
+        installation_id = installation.get('id')
+        
+        if event_type == 'created' and installation_id:
+            # App was installed
+            account = installation.get('account', {})
+            username = account.get('login')
+            
+            # Find user and link installation
+            user = db.query(User).filter(User.github_username == username).first()
+            if user:
+                await auth_service.link_github_installation(
+                    db=db,
+                    user=user,
+                    installation_id=str(installation_id)
+                )
+                
+                logger.info("GitHub App installation linked",
+                           username=username,
+                           installation_id=installation_id)
+        
+        return {"status": "ok"}
+        
+    except Exception as e:
+        logger.error("GitHub webhook failed", error=str(e))
+        return {"status": "error"}
+
 async def process_conversion_job(job_id: str, user_id: str):
     """Background task to process conversion job"""
     db = next(get_db())
@@ -338,8 +422,17 @@ async def process_conversion_job(job_id: str, user_id: str):
         job.started_at = datetime.utcnow()
         db.commit()
         
-        # Get user's GitHub token
-        github_token = await auth_service.get_user_github_token(user)
+        # Get user's GitHub installation token
+        if user.github_installation_id:
+            try:
+                github_token = await github_app_service.get_installation_token(user.github_installation_id)
+            except Exception as e:
+                logger.error("Failed to get installation token", installation_id=user.github_installation_id, error=str(e))
+                # Fallback to stored token if available
+                github_token = await auth_service.get_user_github_token(user)
+        else:
+            # Use stored token if no installation linked
+            github_token = await auth_service.get_user_github_token(user)
         
         # Initialize services
         github_service = GitHubService(github_token)

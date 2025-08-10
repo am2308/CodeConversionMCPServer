@@ -1,7 +1,7 @@
 """
 Configuration settings for the MCP server
 """
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
@@ -21,8 +21,16 @@ class Settings(BaseSettings):
     # Security settings
     encryption_key: str = Field(..., description="Fernet encryption key for storing sensitive data")
     
-    # GitHub settings
-    github_token: str = Field(..., description="GitHub personal access token")
+    # GitHub App settings (Secure)
+    github_app_id: Optional[str] = Field(default=None, description="GitHub App ID")
+    github_app_slug: Optional[str] = Field(default=None, description="GitHub App slug/name (for installation URLs)")
+    github_app_private_key_path: Optional[str] = Field(default=None, description="Path to GitHub App private key")
+    github_webhook_secret: Optional[str] = Field(default=None, description="GitHub App webhook secret")
+    github_client_id: Optional[str] = Field(default=None, description="GitHub App client ID")
+    github_client_secret: Optional[str] = Field(default=None, description="GitHub App client secret")
+    
+    # Legacy GitHub settings (fallback)
+    github_token: Optional[str] = Field(default=None, description="GitHub personal access token (fallback only)")
     github_api_url: str = Field(default="https://api.github.com", description="GitHub API URL")
     
     # LLM settings

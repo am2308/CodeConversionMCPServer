@@ -1,2 +1,33 @@
+
+__pycache__/
+.aws/
+.DS_Store
 .env
 .env.example
+.git-backup/
+.idea/
+.venv/
+.vscode/settings.json
+*.db
+*.egg-info/
+*.key
+*.log
+*.pem
+*.pyc
+*.pyo
+*.sqlite
+*.swo
+*.swp
+# AWS and deployment
+# Database
+# IDE
+# Logs
+# OS
+# Python
+# Sensitive files - never commit these
+code/
+codeconversion.*.private-key.pem
+logs/
+samconfig.toml.backup
+Thumbs.db
+venv/

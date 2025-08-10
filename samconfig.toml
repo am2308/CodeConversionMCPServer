@@ -1,0 +1,44 @@
+# SAM configuration file
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "codeconversion-server"
+s3_bucket = ""  # Will be auto-generated
+s3_prefix = "codeconversion-server"
+region = "ap-south-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = [
+    "Environment=production",
+    "DatabaseInstanceClass=db.t3.micro",
+    "DatabaseAllocatedStorage=20"
+]
+confirm_changeset = false
+resolve_s3 = true
+
+[production.deploy.parameters]
+stack_name = "codeconversion-prod"
+s3_bucket = ""
+s3_prefix = "codeconversion-prod"
+region = "ap-south-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = [
+    "Environment=production",
+    "DatabaseInstanceClass=db.t3.micro",
+    "DatabaseAllocatedStorage=20"
+]
+confirm_changeset = false
+resolve_s3 = true
+
+[development.deploy.parameters]
+stack_name = "codeconversion-dev"
+s3_bucket = ""
+s3_prefix = "codeconversion-dev"
+region = "ap-south-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = [
+    "Environment=development",
+    "DatabaseInstanceClass=db.t3.micro",
+    "DatabaseAllocatedStorage=20"
+]
+confirm_changeset = false
+resolve_s3 = true

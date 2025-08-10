@@ -19,7 +19,9 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String(255), unique=True, nullable=False, index=True)
     github_username = Column(String(255), nullable=True)
-    github_token_encrypted = Column(Text, nullable=True)  # Encrypted PAT token
+    github_token_encrypted = Column(Text, nullable=True)  # Legacy encrypted PAT token (deprecated)
+    github_installation_id = Column(String(255), nullable=True)  # GitHub App installation ID
+    github_oauth_token_encrypted = Column(Text, nullable=True)  # Encrypted OAuth token
     api_key = Column(String(255), unique=True, nullable=False, index=True)  # User's API key
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
