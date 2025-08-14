@@ -92,6 +92,24 @@
         <h1>🔄 Code Conversion Service</h1>
         <p>Convert your repository code to Python using AI</p>
 
+        <!-- API Configuration -->
+        <div id="apiConfig" style="display: block;">
+            <h2>⚙️ API Configuration</h2>
+            <div class="form-group">
+                <label for="apiUrl">API Base URL</label>
+                <input type="text" id="apiUrl" placeholder="https://your-api-id.execute-api.region.amazonaws.com/prod" value="">
+                <small>Get this URL from your CloudFormation stack outputs</small>
+            </div>
+            <button type="button" onclick="setApiUrl()">Set API URL</button>
+            <button type="button" onclick="testConnection()">Test Connection</button>
+            <button type="button" onclick="resetConfig()" style="background: #ef4444;">Reset All</button>
+            <div style="margin-top: 1rem; padding: 1rem; background: #f3f4f6; border-radius: 6px;">
+                <strong>💡 How to get your API URL:</strong><br>
+                1. Run: <code>aws cloudformation describe-stacks --stack-name codeconversion-server --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' --output text</code><br>
+                2. Or check CloudFormation console → Your Stack → Outputs tab → ApiUrl
+            </div>
+        </div>
+
         <!-- Registration Form -->
         <div id="registration" style="display: block;">
             <h2>Register Account</h2>
@@ -104,13 +122,13 @@
                     <label for="githubUsername">GitHub Username</label>
                     <input type="text" id="githubUsername" required>
                 </div>
-                <div class="form-group">
-                    <label for="githubToken">GitHub Personal Access Token</label>
-                    <input type="password" id="githubToken" required>
-                    <small>Create one at: <a href="https://github.com/settings/tokens" target="_blank">GitHub Settings</a></small>
-                </div>
                 <button type="submit">Register</button>
             </form>
+            <div style="margin-top: 1rem; padding: 1rem; background: #e0f2fe; border-radius: 6px;">
+                <strong>📱 After registration:</strong><br>
+                You'll need to install our GitHub App to access your repositories.<br>
+                No personal access tokens required! 🎉
+            </div>
         </div>
 
         <!-- Conversion Form -->
@@ -159,13 +177,87 @@
     </div>
 
     <script>
-        const API_BASE = 'http://localhost:8000';
+        // Auto-detect API URL - works for both local and AWS
+        let API_BASE;
+        
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            // Local development
+            API_BASE = 'http://localhost:8000';
+        } else {
+            // Try to get from URL parameter or use default AWS pattern
+            const urlParams = new URLSearchParams(window.location.search);
+            API_BASE = urlParams.get('api') || prompt('Enter your API URL (from CloudFormation outputs):');
+            
+            if (!API_BASE) {
+                showMessage('API URL is required. Refresh page and enter the URL.', 'error');
+            }
+        }
+        
         let apiKey = localStorage.getItem('apiKey');
 
+        // Show appropriate form
         if (apiKey) {
+            document.getElementById('apiConfig').style.display = 'none';
             document.getElementById('registration').style.display = 'none';
             document.getElementById('conversion').style.display = 'block';
             loadJobs();
+        } else {
+            document.getElementById('apiConfig').style.display = 'none';
+            document.getElementById('registration').style.display = 'block';
+            document.getElementById('conversion').style.display = 'none';
+        }
+
+        // Set API URL
+        function setApiUrl() {
+            const url = document.getElementById('apiUrl').value.trim();
+            if (!url) {
+                showMessage('Please enter a valid API URL', 'error');
+                return;
+            }
+            
+            // Remove trailing slash if present
+            API_BASE = url.replace(/\/$/, '');
+            localStorage.setItem('apiUrl', API_BASE);
+            
+            document.getElementById('apiConfig').style.display = 'none';
+            if (apiKey) {
+                document.getElementById('conversion').style.display = 'block';
+                loadJobs();
+            } else {
+                document.getElementById('registration').style.display = 'block';
+            }
+            
+            showMessage('API URL configured successfully!', 'success');
+        }
+
+        // Test API connection
+        async function testConnection() {
+            const url = document.getElementById('apiUrl').value.trim();
+            if (!url) {
+                showMessage('Please enter a valid API URL', 'error');
+                return;
+            }
+
+            try {
+                const testUrl = url.replace(/\/$/, '');
+                const response = await fetch(`${testUrl}/health`);
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showMessage('✅ Connection successful! API is working.', 'success');
+                } else {
+                    showMessage('❌ Connection failed: ' + (result.detail || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                showMessage('❌ Connection failed: ' + error.message, 'error');
+            }
+        }
+
+        // Reset configuration
+        function resetConfig() {
+            localStorage.removeItem('apiUrl');
+            localStorage.removeItem('apiKey');
+            location.reload();
         }
 
         // Registration
@@ -174,8 +266,7 @@
             
             const data = {
                 email: document.getElementById('email').value,
-                github_username: document.getElementById('githubUsername').value,
-                github_token: document.getElementById('githubToken').value
+                github_username: document.getElementById('githubUsername').value
             };
 
             try {
@@ -190,7 +281,8 @@
                 if (response.ok) {
                     apiKey = result.api_key;
                     localStorage.setItem('apiKey', apiKey);
-                    showMessage('Registration successful!', 'success');
+                    showMessage('Registration successful! 🎉', 'success');
+                    showMessage('Next: Install the GitHub App to connect your repositories', 'success');
                     document.getElementById('registration').style.display = 'none';
                     document.getElementById('conversion').style.display = 'block';
                     loadJobs();

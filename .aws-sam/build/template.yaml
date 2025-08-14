@@ -1,0 +1,488 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'CodeConversion MCP Server - Serverless deployment Multi-tenant SaaS
+  for code conversion using FastAPI and Lambda
+
+  '
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+    - development
+    - staging
+    - production
+    Description: Deployment environment
+  DomainName:
+    Type: String
+    Default: ''
+    Description: Custom domain name (optional)
+  DatabaseInstanceClass:
+    Type: String
+    Default: db.t3.micro
+    AllowedValues:
+    - db.t3.micro
+    - db.t3.small
+    - db.t3.medium
+    Description: RDS instance class (t3.micro for cost optimization)
+  DatabaseAllocatedStorage:
+    Type: Number
+    Default: 20
+    MinValue: 20
+    MaxValue: 100
+    Description: RDS allocated storage in GB (minimum 20GB)
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 256
+    Runtime: python3.11
+    Environment:
+      Variables:
+        ENVIRONMENT:
+          Ref: Environment
+        LOG_LEVEL: INFO
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-vpc
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone:
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: ''
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-public-subnet-1
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone:
+        Fn::Select:
+        - 1
+        - Fn::GetAZs: ''
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-public-subnet-2
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone:
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: ''
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-private-subnet-1
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: 10.0.4.0/24
+      AvailabilityZone:
+        Fn::Select:
+        - 1
+        - Fn::GetAZs: ''
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-private-subnet-2
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-igw
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: VPC
+      InternetGatewayId:
+        Ref: InternetGateway
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: AttachGateway
+    Properties:
+      Domain: vpc
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+        - NatGatewayEIP
+        - AllocationId
+      SubnetId:
+        Ref: PublicSubnet1
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPC
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-public-rt
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId:
+        Ref: PublicRouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId:
+        Ref: InternetGateway
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: PublicRouteTable
+      SubnetId:
+        Ref: PublicSubnet1
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: PublicRouteTable
+      SubnetId:
+        Ref: PublicSubnet2
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPC
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-private-rt
+  DefaultPrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: PrivateRouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId:
+        Ref: NatGateway
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: PrivateRouteTable
+      SubnetId:
+        Ref: PrivateSubnet1
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: PrivateRouteTable
+      SubnetId:
+        Ref: PrivateSubnet2
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for RDS database
+      VpcId:
+        Ref: VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 5432
+        ToPort: 5432
+        SourceSecurityGroupId:
+          Ref: LambdaSecurityGroup
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-database-sg
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Lambda functions
+      VpcId:
+        Ref: VPC
+      SecurityGroupEgress:
+      - IpProtocol: -1
+        CidrIp: '0.0.0.0/0'
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-lambda-sg
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for CodeConversion database
+      SubnetIds:
+      - Ref: PrivateSubnet1
+      - Ref: PrivateSubnet2
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-db-subnet-group
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier:
+        Fn::Sub: ${AWS::StackName}-database
+      DBInstanceClass:
+        Ref: DatabaseInstanceClass
+      Engine: postgres
+      EngineVersion: '15.7'
+      AllocatedStorage:
+        Ref: DatabaseAllocatedStorage
+      StorageEncrypted: true
+      DBName: codeconversion
+      MasterUsername: postgres
+      ManageMasterUserPassword: true
+      VPCSecurityGroups:
+      - Ref: DatabaseSecurityGroup
+      DBSubnetGroupName:
+        Ref: DatabaseSubnetGroup
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: '03:00-04:00'
+      PreferredMaintenanceWindow: sun:04:00-sun:05:00
+      MonitoringInterval: 60
+      MonitoringRoleArn:
+        Fn::GetAtt:
+        - DatabaseMonitoringRole
+        - Arn
+      EnablePerformanceInsights: true
+      PerformanceInsightsRetentionPeriod: 7
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-database
+      - Key: Environment
+        Value:
+          Ref: Environment
+  DatabaseMonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: ''
+          Effect: Allow
+          Principal:
+            Service: monitoring.rds.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole
+      Path: /
+  SecretsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:
+        Fn::Sub: ${AWS::StackName}-secrets-${AWS::AccountId}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+      - PolicyName: SecretsManagerAccess
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - secretsmanager:GetSecretValue
+            - secretsmanager:DescribeSecret
+            Resource:
+            - Ref: GitHubAppSecret
+            - Ref: AppSecret
+            - Fn::GetAtt:
+              - Database
+              - MasterUserSecret.SecretArn
+      - PolicyName: S3Access
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - s3:GetObject
+            Resource:
+              Fn::Sub: arn:aws:s3:::${SecretsBucket}/*
+  GitHubAppSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name:
+        Fn::Sub: ${AWS::StackName}/github-app
+      Description: GitHub App credentials for CodeConversion
+      SecretString:
+        Fn::Sub: "{\n  \"GITHUB_APP_ID\": \"YOUR_GITHUB_APP_ID\",\n  \"GITHUB_APP_SLUG\"\
+          : \"YOUR_GITHUB_APP_SLUG\",\n  \"GITHUB_CLIENT_ID\": \"YOUR_GITHUB_CLIENT_ID\"\
+          ,\n  \"GITHUB_CLIENT_SECRET\": \"YOUR_GITHUB_CLIENT_SECRET\",\n  \"GITHUB_WEBHOOK_SECRET\"\
+          : \"YOUR_GITHUB_WEBHOOK_SECRET\"\n}\n"
+  AppSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name:
+        Fn::Sub: ${AWS::StackName}/app-secrets
+      Description: Application secrets for CodeConversion
+      SecretString:
+        Fn::Sub: "{\n  \"OPENAI_API_KEY\": \"YOUR_OPENAI_API_KEY\",\n  \"ENCRYPTION_KEY\"\
+          : \"YOUR_ENCRYPTION_KEY\"\n}\n"
+  CodeConversionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: ${AWS::StackName}-api
+      CodeUri: CodeConversionFunction
+      Handler: aws_lambda.handler
+      Runtime: python3.11
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          DATABASE_SECRET_ARN:
+            Fn::GetAtt:
+            - Database
+            - MasterUserSecret.SecretArn
+          DATABASE_HOST:
+            Fn::GetAtt:
+            - Database
+            - Endpoint.Address
+          DATABASE_PORT:
+            Fn::GetAtt:
+            - Database
+            - Endpoint.Port
+          DATABASE_NAME: codeconversion
+          GITHUB_APP_SECRET_NAME:
+            Ref: GitHubAppSecret
+          APP_SECRET_NAME:
+            Ref: AppSecret
+          SECRETS_BUCKET:
+            Ref: SecretsBucket
+          GITHUB_APP_PRIVATE_KEY_PATH: github-app-private-key.pem
+      VpcConfig:
+        SecurityGroupIds:
+        - Ref: LambdaSecurityGroup
+        SubnetIds:
+        - Ref: PrivateSubnet1
+        - Ref: PrivateSubnet2
+      Role:
+        Fn::GetAtt:
+        - LambdaExecutionRole
+        - Arn
+      Events:
+        ApiGateway:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+            RestApiId:
+              Ref: ApiGateway
+    Metadata:
+      SamResourceId: CodeConversionFunction
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name:
+        Fn::Sub: ${AWS::StackName}-api
+      StageName: prod
+      Cors:
+        AllowMethods: '''*'''
+        AllowHeaders: '''*'''
+        AllowOrigin: '''*'''
+      TracingEnabled: true
+      MethodSettings:
+      - ResourcePath: /*
+        HttpMethod: '*'
+        LoggingLevel: INFO
+        DataTraceEnabled: true
+        MetricsEnabled: true
+        ThrottlingRateLimit: 100
+        ThrottlingBurstLimit: 200
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Sub: /aws/apigateway/${AWS::StackName}
+      RetentionInDays: 30
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Sub: /aws/lambda/${AWS::StackName}-api
+      RetentionInDays: 30
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value:
+      Fn::Sub: https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-api-url
+  DatabaseEndpoint:
+    Description: RDS database endpoint
+    Value:
+      Fn::GetAtt:
+      - Database
+      - Endpoint.Address
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-database-endpoint
+  SecretsBucket:
+    Description: S3 bucket for secrets
+    Value:
+      Ref: SecretsBucket
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-secrets-bucket
+  GitHubAppSecretArn:
+    Description: GitHub App secret ARN
+    Value:
+      Ref: GitHubAppSecret
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-github-secret-arn
+  WebhookUrl:
+    Description: GitHub webhook URL
+    Value:
+      Fn::Sub: https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/webhooks/github
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-webhook-url

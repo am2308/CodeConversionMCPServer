@@ -1,0 +1,41 @@
+# Virtual environments and backup directories
+code/
+code-*
+*code*
+venv/
+.venv/
+env/
+.env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+
+# Sensitive files
+*.pem
+*.key
+.env
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Documentation and scripts not needed for Lambda
+*.md
+deploy*.sh
+git-push.sh
+cost-estimate.sh
+setup.sh
+validate-template.sh
+init-postgres.sh
+migrate_db.py
+docker-compose.yml
+Dockerfile
+samconfig.toml.backup
