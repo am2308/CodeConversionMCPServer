@@ -134,6 +134,15 @@
         <!-- Conversion Form -->
         <div id="conversion" style="display: none;">
             <h2>Convert Repository</h2>
+            
+            <!-- GitHub App Installation Status -->
+            <div id="githubAppStatus" style="margin-bottom: 1.5rem; padding: 1rem; background: #fef3c7; border-radius: 6px;">
+                <strong>📱 GitHub App Setup Required</strong><br>
+                <p>To convert repositories, you need to install our GitHub App first.</p>
+                <button type="button" onclick="checkGitHubAppStatus()" style="background: #10b981;">Check Installation Status</button>
+                <button type="button" onclick="getGitHubAppInstallUrl()" style="background: #3b82f6;">Get Installation Link</button>
+            </div>
+            
             <form id="convertForm">
                 <div class="form-group">
                     <label for="repoOwner">Repository Owner</label>
@@ -384,6 +393,103 @@
             const container = document.getElementById('messages');
             container.innerHTML = `<div class="${type}">${message}</div>`;
             setTimeout(() => container.innerHTML = '', 5000);
+        }
+
+        // GitHub App installation functions
+        async function checkGitHubAppStatus() {
+            if (!apiKey) {
+                showMessage('Please register first', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/github/install-url`, {
+                    headers: { 'Authorization': `Bearer ${apiKey}` }
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showMessage('✅ GitHub App installation status checked. See instructions below.', 'success');
+                    
+                    // Show installation instructions
+                    const statusDiv = document.getElementById('githubAppStatus');
+                    statusDiv.innerHTML = `
+                        <strong>📱 GitHub App Installation</strong><br>
+                        <p><strong>Your GitHub username:</strong> ${result.user_github_username}</p>
+                        <p><strong>Instructions:</strong></p>
+                        <ol>
+                            <li>Click "Install GitHub App" button below</li>
+                            <li>Select repositories you want to convert</li>
+                            <li>Click "Install" on GitHub</li>
+                            <li>Come back and test repository conversion</li>
+                        </ol>
+                        <a href="${result.install_url}" target="_blank" style="display: inline-block; background: #3b82f6; color: white; padding: 0.75rem 1.5rem; text-decoration: none; border-radius: 6px; margin: 0.5rem 0;">
+                            📱 Install GitHub App
+                        </a>
+                        <br>
+                        
+                        <!-- Manual Installation ID linking -->
+                        <div style="margin-top: 1rem; padding: 1rem; background: #f3f4f6; border-radius: 6px;">
+                            <p><strong>Already installed? Link your installation manually:</strong></p>
+                            <input type="text" id="installationId" placeholder="Installation ID (find in GitHub App settings)" style="width: 300px;">
+                            <button type="button" onclick="linkInstallationId()" style="background: #059669;">Link Installation</button>
+                            <br><small>Find this at: GitHub → Settings → Applications → CodeConversion → Configure (look at URL)</small>
+                        </div>
+                        
+                        <small>After installation, try converting a repository below.</small>
+                    `;
+                    statusDiv.style.background = '#d1fae5';
+                } else {
+                    showMessage('Failed to get GitHub App status: ' + (result.detail || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                showMessage('Network error: ' + error.message, 'error');
+            }
+        }
+
+        async function getGitHubAppInstallUrl() {
+            await checkGitHubAppStatus(); // Same function for now
+        }
+
+        // Link installation ID manually
+        async function linkInstallationId() {
+            const installationId = document.getElementById('installationId').value.trim();
+            
+            if (!installationId) {
+                showMessage('Please enter an installation ID', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/github/link-installation`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({ installation_id: installationId })
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showMessage('✅ GitHub App installation linked successfully! You can now convert repositories.', 'success');
+                    
+                    // Update the status display
+                    const statusDiv = document.getElementById('githubAppStatus');
+                    statusDiv.innerHTML = `
+                        <strong>✅ GitHub App Connected</strong><br>
+                        <p>Installation ID: ${installationId}</p>
+                        <p>Status: Ready for repository conversion</p>
+                    `;
+                    statusDiv.style.background = '#d1fae5';
+                } else {
+                    showMessage('Failed to link installation: ' + (result.detail || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                showMessage('Network error: ' + error.message, 'error');
+            }
         }
 
         // Auto-refresh jobs every 10 seconds

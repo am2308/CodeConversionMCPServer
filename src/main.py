@@ -7,6 +7,8 @@ import structlog
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional, List
@@ -404,6 +406,68 @@ async def github_webhook(
         logger.error("GitHub webhook failed", error=str(e))
         return {"status": "error"}
 
+@app.get("/auth/github/install-url", tags=["authentication"])
+async def get_github_app_install_url(
+    current_user: User = Depends(get_current_user)
+):
+    """Get GitHub App installation URL for the current user"""
+    try:
+        # GitHub App installation URL format
+        github_app_id = settings.github_app_id
+        install_url = f"https://github.com/apps/{settings.github_app_slug}/installations/new"
+        
+        return {
+            "install_url": install_url,
+            "app_name": "CodeConversion",
+            "instructions": [
+                "1. Click the install_url to open GitHub App installation page",
+                "2. Select repositories you want to convert",
+                "3. Click 'Install' to complete the setup",
+                "4. Come back here and try converting a repository"
+            ],
+            "user_github_username": current_user.github_username
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get GitHub App install URL", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to get installation URL")
+
+@app.post("/auth/github/link-installation", tags=["authentication"])
+async def link_github_installation(
+    request: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Manually link GitHub App installation to current user"""
+    try:
+        installation_id = request.get('installation_id')
+        
+        if not installation_id:
+            raise HTTPException(status_code=400, detail="Installation ID is required")
+        
+        # Update user's installation ID
+        current_user.github_installation_id = installation_id
+        current_user.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(current_user)
+        
+        logger.info("GitHub installation linked", 
+                   user_id=str(current_user.id), 
+                   installation_id=installation_id)
+        
+        return {
+            "message": "GitHub App installation linked successfully",
+            "installation_id": installation_id,
+            "status": "ready_for_conversion"
+        }
+        
+    except Exception as e:
+        logger.error("Failed to link GitHub installation", 
+                    user_id=str(current_user.id), 
+                    error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to link installation")
+
 async def process_conversion_job(job_id: str, user_id: str):
     """Background task to process conversion job"""
     db = next(get_db())
@@ -475,6 +539,27 @@ async def process_conversion_job(job_id: str, user_id: str):
     
     finally:
         db.close()
+
+@app.get("/openapi.json", include_in_schema=False)
+async def get_openapi_json():
+    """Explicit OpenAPI JSON endpoint"""
+    return JSONResponse(app.openapi())
+
+@app.get("/docs", include_in_schema=False)
+async def get_docs():
+    """Explicit Swagger UI endpoint"""
+    return get_swagger_ui_html(
+        openapi_url="/openapi.json",
+        title=app.title,
+    )
+
+@app.get("/redoc", include_in_schema=False)
+async def get_redoc():
+    """Explicit ReDoc endpoint"""
+    return get_redoc_html(
+        openapi_url="/openapi.json",
+        title=app.title,
+    )
 
 # Configure OpenAPI security scheme
 app.openapi_schema = None  # Reset to regenerate

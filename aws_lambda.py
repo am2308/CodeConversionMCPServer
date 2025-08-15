@@ -55,6 +55,11 @@ def load_secrets_from_aws():
                 os.environ['database_url'] = database_url
                 os.environ['DATABASE_URL'] = database_url  # Legacy support
                 os.environ['postgres_password'] = password  # Required by config
+                
+                print(f"✅ Database URL configured: postgresql://{username}:***@{db_host}:{db_port}/{db_name}")
+                
+                # Test database connection and create tables if needed
+                test_and_create_database_tables(database_url)
         
         # Download GitHub App private key from S3
         secrets_bucket = os.environ.get('SECRETS_BUCKET')
@@ -74,6 +79,40 @@ def load_secrets_from_aws():
         
     except Exception as e:
         print(f"Error loading secrets from AWS: {e}")
+
+def test_and_create_database_tables(database_url):
+    """Test database connection and create tables if they don't exist"""
+    try:
+        from sqlalchemy import create_engine, text
+        
+        print("🔍 Testing database connection...")
+        engine = create_engine(database_url)
+        
+        # Test connection
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT 1"))
+            print("✅ Database connection successful")
+        
+        # Import after connection test to avoid early import issues
+        from src.models.database import Base
+        
+        # Create tables if they don't exist
+        print("🔨 Creating database tables...")
+        Base.metadata.create_all(bind=engine)
+        print("✅ Database tables created/verified")
+        
+        # Test if tables were created by checking users table
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'users'"))
+            table_count = result.scalar()
+            if table_count > 0:
+                print("✅ Users table exists and is accessible")
+            else:
+                print("❌ Users table still not found after creation attempt")
+        
+    except Exception as e:
+        print(f"❌ Database connection/setup failed: {e}")
+        # Don't raise here - let the app try to handle it
 # Load secrets when the module is imported (Lambda container reuse)
 load_secrets_from_aws()
 
